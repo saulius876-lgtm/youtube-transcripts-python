@@ -5,3 +5,5 @@ venv/
 *.jsonl
 transcripts/
 .env
+.transcript-state/
+transcripts-incremental/
