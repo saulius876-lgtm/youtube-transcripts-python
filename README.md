@@ -1,5 +1,8 @@
 # Bulk YouTube transcripts in Python: channels, playlists and searches, even from a server
 
+**Browser-only guide:** [Get readable transcripts without installing anything](NO_CODE.md).
+Paste a video or playlist link in Apify, select clean paragraphs, then export the output.
+
 `transcripts.py` downloads YouTube transcripts for single videos, **whole channels**, playlists and
 search terms, and saves one file per video as plain text, paragraphs for LLMs, timestamped chunks
 for RAG, or SRT/VTT subtitles.
