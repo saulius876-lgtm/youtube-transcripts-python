@@ -100,6 +100,30 @@ reported and not charged:
 skipped xxxxxxxxxxx: This video is unavailable
 ```
 
+### Recover an export without another transcript request
+
+If a local file write or dataset download fails after a successful run, keep the run ID printed
+by the script. Export that same run into a writable directory:
+
+```bash
+python transcripts.py --resume-run RUN_ID --out-dir recovered-transcripts
+```
+
+This reads the existing run and dataset; it does not start an Actor or request transcripts again.
+It also works to download a completed export again. Run metadata, the original `INPUT` and the
+dataset must remain available in your account. If the original start response was lost, find the
+run in Console before submitting another request.
+
+Recovery accepts only successful runs belonging to this Actor and uses the original transcript
+format for file extensions. It cannot convert an existing transcript into another format. Omit
+sources and new-run input options when recovering. `--max-spend` applies to new runs; it does not
+limit reads or downloads from an existing dataset. Normal platform storage/read costs can apply.
+
+Files in the output directory are written separately. A failed recovery may leave partial files;
+check that the command finishes successfully before using the batch, then recover the same run
+again if needed. For an ongoing queue of known video IDs, use the [incremental workflow](INCREMENTAL.md)
+to retain a local successful-video cache between requests.
+
 ### More examples
 
 ```bash
