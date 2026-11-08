@@ -159,5 +159,57 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(self.client.starts, 1)
 
 
+    def cached_state(self, path=None):
+        path = path or self.state
+        state = {"version": 1, "actor": app.ACTOR, "profile": app.PROFILE,
+                 "successes": {A: transcript(A)}, "pending": None}
+        app.save_state(path, state)
+        return path.read_bytes()
+
+    def test_aggregate_export_cannot_overwrite_cached_state(self):
+        self.state = self.out / "transcripts.jsonl"
+        original = self.cached_state()
+        with self.assertRaisesRegex(ValueError, "overwrite state or lock"):
+            self.execute()
+        self.assertEqual(self.state.read_bytes(), original)
+        self.assertEqual(self.client.starts, 0)
+        self.assertFalse((self.out / (A + ".txt")).exists())
+
+    def test_future_video_export_conflict_is_rejected_before_start(self):
+        self.state = self.out / (A + ".txt")
+        with self.assertRaisesRegex(ValueError, "overwrite state or lock"):
+            self.execute()
+        self.assertEqual(self.client.starts, 0)
+        self.assertFalse(self.out.exists())
+
+    def test_unrequested_cached_video_cannot_overwrite_state(self):
+        self.state = self.out / (A + ".txt")
+        original = self.cached_state()
+        with self.assertRaisesRegex(ValueError, "overwrite state or lock"):
+            self.execute([B])
+        self.assertEqual(self.state.read_bytes(), original)
+        self.assertEqual(self.client.starts, 0)
+        self.assertFalse(self.state.with_name(self.state.name + ".lock").exists())
+
+    def test_symlink_export_to_state_is_rejected(self):
+        original = self.cached_state()
+        self.out.mkdir()
+        try:
+            (self.out / "transcripts.jsonl").symlink_to(self.state)
+        except (OSError, NotImplementedError):
+            self.skipTest("Creating symlinks is unavailable on this system")
+        with self.assertRaisesRegex(ValueError, "overwrite state or lock"):
+            self.execute()
+        self.assertEqual(self.state.read_bytes(), original)
+        self.assertEqual(self.client.starts, 0)
+
+    def test_output_directory_cannot_be_state_file(self):
+        self.out = self.state
+        with self.assertRaisesRegex(ValueError, "overwrite state or lock"):
+            self.execute()
+        self.assertFalse(self.state.exists())
+        self.assertEqual(self.client.starts, 0)
+
+
 if __name__ == "__main__":
     unittest.main()

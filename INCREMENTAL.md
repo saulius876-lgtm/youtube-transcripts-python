@@ -20,6 +20,14 @@ The default locations are:
 - `.transcript-state/state.json`: successful transcript rows and recovery state. Preserve this file between executions.
 - `transcripts-incremental/`: one `.txt` per cached video plus an aggregate `transcripts.jsonl`.
 
+If you customize `--state` or `--out-dir`, keep the state file and its `.lock` separate
+from the export directory path, `transcripts.jsonl` and every cached/requested video's
+`.txt` file. The script rejects conflicting paths before writing exports or starting a run,
+including exports for cached IDs not present in the latest input. Existing symlinks are
+resolved for this check; it does not guard against paths being changed concurrently.
+Choose a nonconflicting output path and rerun with the same state. If an older script
+already overwrote state, restore a backup rather than treating exported text as a cache.
+
 Exports contain **all cached successful transcripts**, not just the latest additions. Downstream processing should also use `videoId` as its stable key. Deleting an export is recoverable from state; deleting state loses the record of what you already fetched and can cause another paid request.
 
 ## Grow a queue over time

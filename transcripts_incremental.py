@@ -93,6 +93,17 @@ def load_state(path):
     return state
 
 
+def validate_export_paths(state_path, out_dir, video_ids):
+    """Keep exports from replacing the cache or its writer lock."""
+    state = Path(state_path).resolve()
+    protected = {state, state.with_name(state.name + ".lock")}
+    root = Path(out_dir).resolve()
+    targets = [root, root / "transcripts.jsonl"]
+    targets.extend(root / (key + ".txt") for key in video_ids)
+    if any(target.resolve() in protected for target in targets):
+        raise ValueError("Export path would overwrite state or lock; choose separate --state and --out-dir paths.")
+
+
 def export_cache(state, out_dir):
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -116,8 +127,13 @@ def execute(sources, state_path, out_dir, token=None, batch_size=10, max_spend=D
     if not 1 <= batch_size <= 100 or not Decimal("0") < Decimal(str(max_spend)) <= Decimal("1"):
         raise ValueError("Batch size must be 1-100 and max spend greater than $0 and at most $1.")
     report = {"actorCallsStarted": 0, "cachedBefore": 0, "newTranscripts": 0, "runIds": [], "problems": []}
+    # Check requested IDs before creating a lock or any export directory.
+    validate_export_paths(state_path, out_dir, ids)
     with state_lock(state_path) as path:
         state = load_state(path)
+        # Exports include the full cache, including IDs not requested this time.
+        pending_ids = (state.get("pending") or {}).get("videoIds", [])
+        validate_export_paths(path, out_dir, set(ids) | set(state["successes"]) | set(pending_ids))
         report["cachedBefore"] = sum(i in state["successes"] for i in ids)
         # Repair/recreate exports before considering any new paid work.
         exporter(state, out_dir)
