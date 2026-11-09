@@ -211,5 +211,68 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(self.client.starts, 0)
 
 
+    def test_unresolved_first_id_does_not_starve_next_video(self):
+        self.client.rows = []
+        self.execute([A, B], batch_size=1)
+        self.client.rows = [transcript(B)]
+        result = self.execute([A, B], batch_size=1)
+        self.assertEqual(self.client.input["videoUrls"], [B])
+        self.assertEqual(result["newTranscripts"], 1)
+        state = json.loads(self.state.read_text())
+        self.assertNotIn(A, state["successes"])
+        self.assertEqual(state["retryOrder"], [A])
+
+    def test_all_unresolved_ids_rotate_after_each_completed_attempt(self):
+        self.client.rows = []
+        selected = []
+        for _ in range(4):
+            self.execute([A, B], batch_size=1)
+            selected.extend(self.client.input["videoUrls"])
+        self.assertEqual(selected, [A, B, A, B])
+        self.assertEqual(self.client.starts, 4)
+
+    def test_appended_untried_video_precedes_retry(self):
+        self.client.rows = []
+        self.execute([A], batch_size=1)
+        self.client.rows = [transcript(B)]
+        self.execute([A, B], batch_size=1)
+        self.assertEqual(self.client.input["videoUrls"], [B])
+
+    def test_legacy_cache_without_retry_order_still_exports_offline(self):
+        self.cached_state()
+        state = json.loads(self.state.read_text())
+        self.assertNotIn("retryOrder", state)
+        result = app.execute([A], self.state, self.out, token=None,
+                             client_factory=lambda token: self.fail("No client for cached repeat"))
+        self.assertEqual(result["actorCallsStarted"], 0)
+        self.assertEqual(result["totalCached"], 1)
+
+    def test_invalid_retry_order_preserves_state_and_starts_nothing(self):
+        for retry_order in ["bad", [A, A], ["invalid"], [None]]:
+            self.cached_state()
+            state = json.loads(self.state.read_text())
+            state["retryOrder"] = retry_order
+            self.state.write_text(json.dumps(state))
+            original = self.state.read_bytes()
+            with self.subTest(retry_order=retry_order), self.assertRaisesRegex(ValueError, "retry order"):
+                self.execute([A, B])
+            self.assertEqual(self.state.read_bytes(), original)
+        self.assertEqual(self.client.starts, 0)
+
+    def test_interrupted_download_keeps_retry_order_until_recovery(self):
+        self.client.rows = [transcript(A)]
+        self.client.interrupt_dataset = True
+        with self.assertRaises(ConnectionError):
+            self.execute([A, B])
+        state = json.loads(self.state.read_text())
+        self.assertIsNotNone(state["pending"])
+        self.assertNotIn("retryOrder", state)
+        self.client.interrupt_dataset = False
+        self.execute([A, B])
+        state = json.loads(self.state.read_text())
+        self.assertEqual(state["retryOrder"], [B])
+        self.assertEqual(self.client.starts, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

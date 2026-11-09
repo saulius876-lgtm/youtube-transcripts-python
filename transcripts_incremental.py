@@ -90,6 +90,11 @@ def load_state(path):
     for key, row in successes.items():
         if not VIDEO_ID.fullmatch(key) or row.get("videoId") != key or row.get("type") != "transcript" or not isinstance(row.get("transcript"), str) or not row["transcript"].strip():
             raise ValueError("Invalid cached transcript; restore the state from backup before continuing.")
+    retry_order = state.get("retryOrder", [])
+    if (not isinstance(retry_order, list)
+            or any(not isinstance(key, str) or not VIDEO_ID.fullmatch(key) for key in retry_order)
+            or len(set(retry_order)) != len(retry_order)):
+        raise ValueError("Invalid retry order; restore the state from backup before continuing.")
     return state
 
 
@@ -158,7 +163,10 @@ def execute(sources, state_path, out_dir, token=None, batch_size=10, max_spend=D
                 pending["runId"] = resume_run
                 save_state(path, state)
             if not pending:
-                selected = missing[:batch_size]
+                # New queue entries get their first attempt before unresolved retries.
+                # Among retries, use persisted oldest-attempt-first order.
+                ranks = {key: index for index, key in enumerate(state.get("retryOrder", []))}
+                selected = sorted(missing, key=lambda key: (key in ranks, ranks.get(key, 0)))[:batch_size]
                 run_input = {"videoUrls": selected, **PROFILE}
                 pending = {"runId": None, "videoIds": selected, "input": run_input}
                 state["pending"] = pending
@@ -187,6 +195,12 @@ def execute(sources, state_path, out_dir, token=None, batch_size=10, max_spend=D
             unfinished = [i for i in pending["videoIds"] if i not in state["successes"]]
             if unfinished:
                 report["problems"].append({"notCached": unfinished, "runStatus": str(run.status)})
+            # Rotate only after the existing dataset is fully read. An interrupted
+            # download keeps its pending run and must recover before any new work.
+            attempted = set(pending["videoIds"])
+            state["retryOrder"] = [key for key in state.get("retryOrder", [])
+                                   if key not in state["successes"] and key not in attempted]
+            state["retryOrder"].extend(unfinished)
             state["lastRun"] = {"id": pending["runId"], "status": str(run.status)}
             state["pending"] = None
             save_state(path, state)

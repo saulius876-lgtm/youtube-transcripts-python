@@ -52,7 +52,9 @@ Only explicit single-video URLs and 11-character IDs are accepted. Channel handl
 
 ## What is remembered
 
-Only rows identified as transcripts with nonempty text enter the successful cache. No-caption/private/unavailable videos are not marked successful and can be retried on a later execution. The report lists unresolved IDs; a run with unresolved inputs exits with code 2. A failed or missing result is not proof that captions will never become available. If the first batch repeatedly contains unavailable videos, move those IDs to a separate retry file so they do not occupy the next batch again.
+Only rows identified as transcripts with nonempty text enter the successful cache. No-caption/private/unavailable videos are not marked successful and can be retried on a later execution. The report lists unresolved IDs; a run with unresolved inputs exits with code 2. A failed or missing result is not proof that captions will never become available. Untried IDs are selected before previously unresolved IDs. After a completed download, unresolved IDs move to the end of a retry order saved in state, so an unavailable first video does not permanently block later queue entries. When only retries remain, the oldest attempt goes first. Successful IDs stay cached and are never selected again by this workflow. You can still move unavailable IDs to a separate file to exclude them from this queue.
+
+An interrupted download resumes its existing pending run before selecting another batch; it does not rotate that unfinished attempt. Existing state files without `retryOrder` remain supported. Retry order is not a cooldown or a spending budget: repeated executions containing only unresolved IDs still make new bounded attempts. Keep using the per-execution batch size and spending cap.
 
 This example deliberately uses `clean-text` and English as the preferred language. The Actor may fall back to another available caption language; inspect each row's `language`. It does not refresh already cached captions or detect later edits to a video. Different language/format needs require a separate state and a deliberately adapted profile.
 
