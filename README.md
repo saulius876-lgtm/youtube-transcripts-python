@@ -119,9 +119,12 @@ format for file extensions. It cannot convert an existing transcript into anothe
 sources and new-run input options when recovering. `--max-spend` applies to new runs; it does not
 limit reads or downloads from an existing dataset. Normal platform storage/read costs can apply.
 
-Files in the output directory are written separately. A failed recovery may leave partial files;
-check that the command finishes successfully before using the batch, then recover the same run
-again if needed. For an ongoing queue of known video IDs, use the [incremental workflow](INCREMENTAL.md)
+Each output file is replaced only after its contents are written successfully. The combined
+`transcripts.jsonl` is replaced after the entire dataset download and per-video exports finish;
+a failure preserves its previous complete version, or leaves it absent on a first export.
+The directory is not updated as one transaction: some complete per-video files may already be
+updated when a later step fails. Check that the command finishes successfully before using the
+batch, then recover the same run again if needed. For an ongoing queue of known video IDs, use the [incremental workflow](INCREMENTAL.md)
 to retain a local successful-video cache between requests.
 
 ### More examples

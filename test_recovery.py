@@ -97,4 +97,39 @@ class RecoveryTests(unittest.TestCase):
     def test_matching_explicit_format_is_allowed(self):
         self.recover(['--format','clean-text']);self.assertEqual(self.client.starts,0)
 
+
+    def test_interrupted_recovery_preserves_previous_combined_export(self):
+        self.out.mkdir();file=self.out/'transcripts.jsonl';file.write_text('previous complete batch')
+        self.client.interrupted=True
+        with self.assertRaises(ConnectionError):self.recover()
+        self.assertEqual(file.read_text(),'previous complete batch')
+        self.assertFalse(list(self.out.glob('*.tmp')));self.assertEqual(self.client.starts,0)
+        self.client.interrupted=False;self.recover()
+        self.assertEqual(json.loads(file.read_text())['videoId'],A)
+
+    def test_first_interrupted_export_leaves_no_combined_file(self):
+        self.client.interrupted=True
+        with self.assertRaises(ConnectionError):self.recover()
+        self.assertFalse((self.out/'transcripts.jsonl').exists())
+        self.assertFalse(list(self.out.glob('*.tmp')))
+
+    def test_atomic_writer_preserves_old_file_on_write_failure(self):
+        self.out.mkdir();file=self.out/(A+'.txt');file.write_text('previous transcript')
+        with self.assertRaises(OSError):
+            with app.atomic_output(str(file)) as stream:
+                stream.write('partial new text');raise OSError('simulated write failure')
+        self.assertEqual(file.read_text(),'previous transcript')
+        self.assertFalse(list(self.out.glob('*.tmp')))
+
+    def test_per_video_replace_failure_preserves_old_exports(self):
+        self.out.mkdir();text=self.out/(A+'.txt');text.write_text('previous transcript')
+        combined=self.out/'transcripts.jsonl';combined.write_text('previous batch')
+        replace=app.os.replace
+        def fail(source,target):
+            if Path(target)==text:raise OSError('simulated replace failure')
+            return replace(source,target)
+        with patch.object(app.os,'replace',side_effect=fail),self.assertRaises(OSError):self.recover()
+        self.assertEqual(text.read_text(),'previous transcript');self.assertEqual(combined.read_text(),'previous batch')
+        self.assertFalse(list(self.out.glob('*.tmp')));self.assertEqual(self.client.starts,0)
+
 if __name__=='__main__':unittest.main()

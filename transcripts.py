@@ -6,9 +6,11 @@
 Writes one file per video to transcripts/ and every row to transcripts/transcripts.jsonl.
 """
 import argparse
+from contextlib import contextmanager
 import json
 import os
 import sys
+import tempfile
 
 from apify_client import ApifyClient
 
@@ -16,6 +18,23 @@ ACTOR = "sauliusautomatesit/youtube-transcript-scraper"
 ACTOR_ID = "qdxd1wj9U6iIS8Jtx"
 FORMATS = ["text", "clean-text", "segments", "chunks", "srt", "vtt"]
 EXTENSIONS = {"srt": ".srt", "vtt": ".vtt", "segments": ".json", "chunks": ".json"}
+
+
+
+@contextmanager
+def atomic_output(path):
+    """Replace one export only after its complete contents reach disk."""
+    fd, temporary = tempfile.mkstemp(prefix=os.path.basename(path) + ".", suffix=".tmp",
+                                     dir=os.path.dirname(path) or ".")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            yield stream
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 
 
 def main():
@@ -74,7 +93,7 @@ def main():
 
     os.makedirs(args.out_dir, exist_ok=True)
     saved = 0
-    with open(os.path.join(args.out_dir, "transcripts.jsonl"), "w", encoding="utf-8") as jsonl:
+    with atomic_output(os.path.join(args.out_dir, "transcripts.jsonl")) as jsonl:
         for item in client.dataset(run.default_dataset_id).iterate_items():
             jsonl.write(json.dumps(item, ensure_ascii=False) + "\n")
             if item.get("type") != "transcript":
@@ -86,7 +105,7 @@ def main():
             if not isinstance(body, str):
                 body = json.dumps(body, ensure_ascii=False, indent=1)
             path = os.path.join(args.out_dir, item["videoId"] + EXTENSIONS.get(output_format, ".txt"))
-            with open(path, "w", encoding="utf-8") as f:
+            with atomic_output(path) as f:
                 f.write(body)
             saved += 1
             print(f"{item['videoId']}  {item.get('language')}  {item.get('wordCount', 0):>6} words  {item.get('title', '')[:60]}")
